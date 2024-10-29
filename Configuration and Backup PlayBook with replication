@@ -1,0 +1,153 @@
+---
+- name: MySQL Configuration and Backup Playbook
+  hosts: localhost
+  become: yes
+  tasks:
+    # Task 1: Install MariaDB server
+    - name: Install MariaDB server
+      apt:
+        name: mariadb-server
+        state: present
+        update_cache: yes
+
+    - name: Ensure MariaDB service is running
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    # Task 2: Ensure MySQL slow log and error log configuration
+    - name: Configure MySQL slow and error logs
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/my.cnf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^slow_query_log', line: 'slow_query_log = 1' }
+        - { regexp: '^slow_query_log_file', line: 'slow_query_log_file = /var/log/mysql/slow-query.log' }
+        - { regexp: '^long_query_time', line: 'long_query_time = 2' }
+        - { regexp: '^log_queries_not_using_indexes', line: 'log_queries_not_using_indexes = 1' }
+        - { regexp: '^log_error', line: 'log_error = /var/log/mysql/error.log' }
+
+    - name: Ensure MySQL slow log file exists
+      ansible.builtin.file:
+        path: /var/log/mysql/slow-query.log
+        state: touch
+        owner: mysql
+        group: mysql
+        mode: '0640'
+
+    - name: Ensure MySQL error log file exists
+      ansible.builtin.file:
+        path: /var/log/mysql/error.log
+        state: touch
+        owner: mysql
+        group: mysql
+        mode: '0640'
+
+    - name: Restart MySQL to apply changes
+      ansible.builtin.systemd:
+        name: mysql
+        state: restarted
+
+    # Task 3: Setup MySQL user with access only from localhost
+    - name: Create MySQL user 'juniper' with access from localhost only
+      mysql_user:
+        name: juniper
+        host: "localhost"
+        password: "juniper@123"
+        priv: '*.*:ALL'
+        state: present
+
+    # Task 4: Configure MySQL Master-Slave Replication
+    - name: Configure Master for replication
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/my.cnf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^server-id', line: 'server-id = 1' }
+        - { regexp: '^log_bin', line: 'log_bin = /var/log/mysql/mysql-bin.log' }
+        - { regexp: '^key_buffer_size', line: 'key_buffer_size = 16M' }
+        - { regexp: '^max_binlog_size', line: 'max_binlog_size = 100M' }
+
+    - name: Create replication user on Master
+      mysql_user:
+        name: replication
+        host: "10.98.6.31"
+        password: "juniper@123"
+        priv: "*.*:REPLICATION SLAVE"
+        state: present
+
+    - name: Create replication user on Master for second Slave
+      mysql_user:
+        name: replication
+        host: "10.98.6.32"
+        password: "juniper@123"
+        priv: "*.*:REPLICATION SLAVE"
+        state: present
+
+  # Task 5: Configure Slave Nodes for Replication
+- name: Configure Slave Nodes for Replication
+  hosts: mysql_slaves  # Define this group in your inventory for 10.98.6.31 and 10.98.6.32
+  become: yes
+  tasks:
+    - name: Configure Slave MySQL settings
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/my.cnf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^server-id', line: "server-id = {{ server_id }}" }
+        - { regexp: '^relay_log', line: 'relay_log = /var/log/mysql/mysql-relay-bin.log' }
+
+    - name: Start replication on Slave
+      mysql_replication:
+        login_user: replication
+        login_password: juniper@123
+        master_host: 10.98.6.36
+        master_user: replication
+        master_password: juniper@123
+        master_log_file: "{{ hostvars['master']['log_values'].stdout_lines[0] }}"
+        master_log_pos: "{{ hostvars['master']['log_values'].stdout_lines[1] }}"
+        state: present
+
+  # Task 6: Setup daily MySQL backup
+- name: MySQL Backup Configuration
+  hosts: localhost
+  become: yes
+  tasks:
+    - name: Ensure backup directory exists
+      file:
+        path: /var/backups/mysql
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create MySQL backup using cron job
+      cron:
+        name: "Daily MySQL backup"
+        minute: "0"
+        hour: "1"  # Schedule backup at 1 AM
+        user: root
+        job: "/usr/bin/mysqldump -u root -p juniper@123 --all-databases --master-data=2 --single-transaction --quick --lock-tables=false > /var/backups/mysql/master_backup.sql"
+
+    - name: Ensure backup file has correct permissions
+      file:
+        path: /var/backups/mysql/master_backup.sql
+        owner: root
+        group: root
+        mode: '0640'
+
+    # Task 7: Extract log_file and log_pos from MySQL backup
+    - name: Read the MySQL backup file for log_file and log_pos
+      shell: |
+        grep -m 1 "CHANGE MASTER TO" /var/backups/mysql/master_backup.sql |
+        grep -oE "MASTER_LOG_FILE='[^']*'|MASTER_LOG_POS=[0-9]+" |
+        awk -F"=" '{print $2}' | tr -d "'"
+      register: log_values
+
+    - name: Display log_file and log_pos values
+      debug:
+        var: log_values.stdout_lines

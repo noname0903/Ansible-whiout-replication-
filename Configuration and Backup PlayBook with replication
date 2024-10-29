@@ -140,13 +140,37 @@
       when: ansible_date_time.hour == "01" and ansible_date_time.minute == "00" # Run this task only once per day at 1:00 AM
 
     # Task 7: Extract log_file and log_pos and  from MySQL backup
-    - name: Read the MySQL backup file for log_file and log_pos
-      shell: |
-        grep -m 1 "CHANGE MASTER TO" /var/backups/mysql/master_backup.sql |
-        grep -oE "MASTER_LOG_FILE='[^']*'|MASTER_LOG_POS=[0-9]+" |
-        awk -F"=" '{print $2}' | tr -d "'"
-      register: log_values
+    - name: Read the latest MySQL backup file for CHANGE MASTER TO values
+  hosts: localhost
+  become: yes
+  tasks:
+    - name: Find the latest MySQL backup file
+      shell: "ls -t /var/backups/mysql/*.sql | head -n 1"
+      register: latest_backup_file
+      changed_when: false
 
-    - name: Display log_file and log_pos values
+    - name: Read the CHANGE MASTER TO line from the latest MySQL backup
+      shell: |
+        grep -m 1 "CHANGE MASTER TO" {{ latest_backup_file.stdout }}
+      register: change_master_line
+
+    - name: Extract log_file and log_pos values
+      set_fact:
+        log_file: "{{ (change_master_line.stdout | regex_search(\"MASTER_LOG_FILE='([^']+)'\", '\\1')) }}"
+        log_pos: "{{ (change_master_line.stdout | regex_search(\"MASTER_LOG_POS=([0-9]+)\", '\\1')) }}"
+
+    - name: Define replica configuration
+      set_fact:
+        change_master_to:
+          master_host: "10.98.6.36"
+          master_user: "replica_user"
+          master_password: "replica_password"
+          master_log_file: "{{ log_file }}"
+          master_log_pos: "{{ log_pos }}"
+
+    - name: Display CHANGE MASTER TO configuration for replica servers
       debug:
-        var: log_values.stdout_lines
+        msg:
+          - "Replica configuration for 10.98.6.31 and 10.98.6.32"
+          - "CHANGE MASTER TO MASTER_HOST='{{ change_master_to.master_host }}', MASTER_LOG_FILE='{{ change_master_to.master_log_file }}', MASTER_LOG_POS={{ change_master_to.master_log_pos }}"
+

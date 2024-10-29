@@ -113,10 +113,11 @@
         state: present
 
   # Task 6: Setup daily MySQL backup
-- name: MySQL Backup Configuration
+- name: MySQL Configuration and Backup Playbook
   hosts: localhost
   become: yes
   tasks:
+  
     - name: Ensure backup directory exists
       file:
         path: /var/backups/mysql
@@ -125,22 +126,20 @@
         group: root
         mode: '0755'
 
-    - name: Create MySQL backup using cron job
-      cron:
-        name: "Daily MySQL backup"
-        minute: "0"
-        hour: "1"  # Schedule backup at 1 AM
-        user: root
-        job: "/usr/bin/mysqldump -u root -p juniper@123 --all-databases --master-data=2 --single-transaction --quick --lock-tables=false > /var/backups/mysql/master_backup.sql"
+    - name: Create MySQL backup with date in filename
+      shell: |
+        backup_dir="/var/backups/mysql"
+        filename="master_backup_$(date +\%Y-\%m-\%d).sql"
+        /usr/bin/mysqldump -u root -p'juniper@123' --all-databases --master-data=2 --single-transaction --quick --lock-tables=false > "$backup_dir/$filename"
+      args:
+        creates: "/var/backups/mysql/master_backup_$(date +%Y-%m-%d).sql"  # Run once per day
 
-    - name: Ensure backup file has correct permissions
-      file:
-        path: /var/backups/mysql/master_backup.sql
-        owner: root
-        group: root
-        mode: '0640'
+    - name: Clean up old backups, keep last 3 files
+      shell: |
+        ls -tp /var/backups/mysql/master_backup_*.sql | grep -v '/$' | tail -n +4 | xargs -I {} rm -- {}
+      when: ansible_date_time.hour == "01" and ansible_date_time.minute == "00" # Run this task only once per day at 1:00 AM
 
-    # Task 7: Extract log_file and log_pos from MySQL backup
+    # Task 7: Extract log_file and log_pos and  from MySQL backup
     - name: Read the MySQL backup file for log_file and log_pos
       shell: |
         grep -m 1 "CHANGE MASTER TO" /var/backups/mysql/master_backup.sql |

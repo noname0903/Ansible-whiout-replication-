@@ -149,15 +149,16 @@
       register: latest_backup_file
       changed_when: false
 
-    - name: Read the CHANGE MASTER TO line from the latest MySQL backup
+    - name: Read the MySQL backup file for log_file and log_pos
       shell: |
-        grep -m 1 "CHANGE MASTER TO" {{ latest_backup_file.stdout }}
-      register: change_master_line
+        grep -m 1 "CHANGE MASTER TO" {{ latest_backup_file.stdout }} |
+        grep -oE "MASTER_LOG_FILE='[^']*'|MASTER_LOG_POS=[0-9]+" |
+        awk -F"=" '{print $2}' | tr -d "'"
+      register: log_values
 
-    - name: Extract log_file and log_pos values
-      set_fact:
-        log_file: "{{ (change_master_line.stdout | regex_search(\"MASTER_LOG_FILE='([^']+)'\", '\\1')) }}"
-        log_pos: "{{ (change_master_line.stdout | regex_search(\"MASTER_LOG_POS=([0-9]+)\", '\\1')) }}"
+    - name: Display log_file and log_pos values
+      debug:
+        var: log_values.stdout_lines
 
     - name: Define replica configuration
       set_fact:

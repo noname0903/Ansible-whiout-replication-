@@ -1,177 +1,126 @@
 ---
-- name: MySQL Configuration and Backup Playbook
-  hosts: localhost
+- name: Configure MariaDB replication
+  hosts: replication
   become: yes
+  vars:
+    master_host: rep1
+    slave_host: rep2
+    replication_user: replica
+    replication_password: juniper@123
+    backup_directory: /var/backups/mysql/
+
   tasks:
-    # Task 1: Install MariaDB server
-    - name: Install MariaDB server
+    - name: Install curl (if not already installed)
       apt:
-        name: mariadb-server
+        name: curl
         state: present
         update_cache: yes
 
-    - name: Ensure MariaDB service is running
-      service:
+    - name: Download and run the MariaDB repository setup script
+      shell: "curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version='mariadb-11.6'"
+      args:
+        creates: /etc/apt/sources.list.d/mariadb.list
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install MariaDB server
+      apt:
+        name: mariadb-server
+        state: latest
+
+    - name: Start and enable MariaDB service
+      systemd:
         name: mariadb
         state: started
         enabled: yes
+    - name: Configure MariaDB for replication
+      copy:
+        dest: /etc/mysql/my.cnf
+        content: |
+          [mysqld]
+          server-id = {{ hostvars[inventory_hostname]['server_id'] }}
+          {% if inventory_hostname != master_host %}
+          relay-log = /var/log/mysql/mysql-relay-bin.log
+          read_only = 1
+          {% else %}
+          log_bin = /var/log/mysql/mysql-bin.log
+          bind-address = 0.0.0.0
+          {% endif %}
+          log_error = /var/log/mysql/error.log
+          max_connections = 100
+          key_buffer_size = 16M
+      owner: root
+      group: root
+      mode: '0644'
 
-    # Task 2: Ensure MySQL slow log and error log configuration
-    - name: Configure MySQL slow and error logs
-      ansible.builtin.lineinfile:
-        path: /etc/mysql/my.cnf
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-      loop:
-        - { regexp: '^slow_query_log', line: 'slow_query_log = 1' }
-        - { regexp: '^slow_query_log_file', line: 'slow_query_log_file = /var/log/mysql/slow-query.log' }
-        - { regexp: '^long_query_time', line: 'long_query_time = 2' }
-        - { regexp: '^log_queries_not_using_indexes', line: 'log_queries_not_using_indexes = 1' }
-        - { regexp: '^log_error', line: 'log_error = /var/log/mysql/error.log' }
-
-    - name: Ensure MySQL slow log file exists
-      ansible.builtin.file:
-        path: /var/log/mysql/slow-query.log
-        state: touch
-        owner: mysql
-        group: mysql
-        mode: '0640'
-
-    - name: Ensure MySQL error log file exists
-      ansible.builtin.file:
-        path: /var/log/mysql/error.log
-        state: touch
-        owner: mysql
-        group: mysql
-        mode: '0640'
-
-    - name: Restart MySQL to apply changes
-      ansible.builtin.systemd:
-        name: mysql
+    - name: Restart MariaDB service
+      systemd:
+        name: mariadb
         state: restarted
+        enabled: yes
 
-    # Task 3: Setup MySQL user with access only from localhost
-    - name: Create MySQL user 'juniper' with access from localhost only
+    - name: Create replication user (only on master)
       mysql_user:
-        name: juniper
-        host: "localhost"
-        password: "juniper@123"
-        priv: '*.*:ALL'
-        state: present
-
-    # Task 4: Configure MySQL Master-Slave Replication
-    - name: Configure Master for replication
-      ansible.builtin.lineinfile:
-        path: /etc/mysql/my.cnf
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-      loop:
-        - { regexp: '^server-id', line: 'server-id = 1' }
-        - { regexp: '^log_bin', line: 'log_bin = /var/log/mysql/mysql-bin.log' }
-        - { regexp: '^key_buffer_size', line: 'key_buffer_size = 16M' }
-        - { regexp: '^max_binlog_size', line: 'max_binlog_size = 100M' }
-
-    - name: Create replication user on Master
-      mysql_user:
-        name: replication
-        host: "10.98.6.31"
-        password: "juniper@123"
+        name: "{{ replication_user }}"
+        password: "{{ replication_password }}"
+        host: "%"
         priv: "*.*:REPLICATION SLAVE"
         state: present
+      when: inventory_hostname == master_host
 
-    - name: Create replication user on Master for second Slave
-      mysql_user:
-        name: replication
-        host: "10.98.6.32"
-        password: "juniper@123"
-        priv: "*.*:REPLICATION SLAVE"
-        state: present
-
-  # Task 5: Configure Slave Nodes for Replication
-- name: Configure Slave Nodes for Replication
-  hosts: mysql_slaves  # Define this group in your inventory for 10.98.6.31 and 10.98.6.32
-  become: yes
-  tasks:
-    - name: Configure Slave MySQL settings
-      ansible.builtin.lineinfile:
-        path: /etc/mysql/my.cnf
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-      loop:
-        - { regexp: '^server-id', line: "server-id = {{ server_id }}" }
-        - { regexp: '^relay_log', line: 'relay_log = /var/log/mysql/mysql-relay-bin.log' }
-
-    - name: Start replication on Slave
-      mysql_replication:
-        login_user: replication
-        login_password: juniper@123
-        master_host: 10.98.6.36
-        master_user: replication
-        master_password: juniper@123
-        master_log_file: "{{ hostvars['master']['log_values'].stdout_lines[0] }}"
-        master_log_pos: "{{ hostvars['master']['log_values'].stdout_lines[1] }}"
-        state: present
-
-  # Task 6: Setup daily MySQL backup
-- name: MySQL Configuration and Backup Playbook
-  hosts: localhost
-  become: yes
-  tasks:
-  
-    - name: Ensure backup directory exists
-      file:
-        path: /var/backups/mysql
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-
-    - name: Create MySQL backup with date in filename
-      shell: |
-        backup_dir="/var/backups/mysql"
-        filename="master_backup_$(date +\%Y-\%m-\%d).sql"
-        /usr/bin/mysqldump -u root -p'juniper@123' --all-databases --master-data=2 --single-transaction --quick --lock-tables=false > "$backup_dir/$filename"
-      args:
-        creates: "/var/backups/mysql/master_backup_$(date +%Y-%m-%d).sql"  # Run once per day
-
-    - name: Clean up old backups, keep last 3 files
-      shell: |
-        ls -tp /var/backups/mysql/master_backup_*.sql | grep -v '/$' | tail -n +4 | xargs -I {} rm -- {}
-      when: ansible_date_time.hour == "01" and ansible_date_time.minute == "00" # Run this task only once per day at 1:00 AM
-
-    # Task 7: Extract log_file and log_pos and  from MySQL backup
-    - name: Read the latest MySQL backup file for CHANGE MASTER TO values
-  hosts: localhost
-  become: yes
-  tasks:
-    - name: Find the latest MySQL backup file
-      shell: "ls -t /var/backups/mysql/*.sql | head -n 1"
+    - name: Find the latest MySQL backup file (only on master)
+      shell: "ls -t {{ backup_directory }}*.sql | head -n 1"
       register: latest_backup_file
-      changed_when: false
+      when: inventory_hostname == master_host
 
-    - name: Read the MySQL backup file for log_file and log_pos
+    - name: Read log_file and log_pos from backup (only on master)
       shell: |
         grep -m 1 "CHANGE MASTER TO" {{ latest_backup_file.stdout }} |
         grep -oE "MASTER_LOG_FILE='[^']*'|MASTER_LOG_POS=[0-9]+" |
         awk -F"=" '{print $2}' | tr -d "'"
       register: log_values
+      when: inventory_hostname == master_host
 
-    - name: Display log_file and log_pos values
-      debug:
-        var: log_values.stdout_lines
-
-    - name: Define replica configuration
+    - name: Share log_file and log_pos to all hosts
       set_fact:
-        change_master_to:
-          master_host: "10.98.6.36"
-          master_user: "replica_user"
-          master_password: "replica_password"
-          master_log_file: "{{ log_file }}"
-          master_log_pos: "{{ log_pos }}"
+        log_file: "{{ log_values.stdout_lines[0] | default('') }}"
+        log_pos: "{{ log_values.stdout_lines[1] | default('') }}"
 
-    - name: Display CHANGE MASTER TO configuration for replica servers
+    - name: Stop slave process
+      mysql_replication:
+        mode: stopreplica
+        login_user: root
+        login_password: "{{ replication_password }}"
+      when: inventory_hostname == slave_host
+
+    - name: Configure replication on slave
+      command: >
+        mariadb -u root -p'{{ replication_password }}' -e
+        "CHANGE MASTER TO MASTER_HOST='{{ hostvars[master_host]['ansible_host'] }}',
+        MASTER_USER='{{ replication_user }}',
+        MASTER_PASSWORD='{{ replication_password }}',
+        MASTER_LOG_FILE='{{ hostvars[master_host]['log_file'] }}',
+        MASTER_LOG_POS={{ hostvars[master_host]['log_pos'] }};"
+      when: inventory_hostname == slave_host
+
+    - name: Start slave process
+      mysql_replication:
+        mode: startreplica
+        login_user: root
+        login_password: "{{ replication_password }}"
+      when: inventory_hostname == slave_host
+
+    - name: Check slave replication status
+      mysql_replication:
+        mode: getreplica
+        login_user: root
+        login_password: "{{ replication_password }}"
+      register: slave_status
+      when: inventory_hostname == slave_host
+
+    - name: Display slave replication status
       debug:
-        msg:
-          - "Replica configuration for 10.98.6.31 and 10.98.6.32"
-          - "CHANGE MASTER TO MASTER_HOST='{{ change_master_to.master_host }}', MASTER_LOG_FILE='{{ change_master_to.master_log_file }}', MASTER_LOG_POS={{ change_master_to.master_log_pos }}"
-
+        var: slave_status
+      when: inventory_hostname == slave_host

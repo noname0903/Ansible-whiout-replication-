@@ -8,6 +8,7 @@
     replication_user: replica
     replication_password: juniper@123
     backup_directory: /var/backups/mysql/
+    root_password: juniper@123
 
   tasks:
     - name: Install curl (if not already installed)
@@ -35,6 +36,30 @@
         name: mariadb
         state: started
         enabled: yes
+
+   - name: Set root password
+      mysql_user:
+        name: root
+        password: "{{ root_password }}"
+        host: localhost
+        state: present
+
+    - name: Remove test database
+      mysql_db:
+        name: test
+        state: absent
+
+    - name: Remove anonymous users
+      mysql_user:
+        name: ''
+        host: localhost
+        state: absent
+
+    - name: Disable remote root login
+      mysql_user:
+        name: root
+        host: '%'
+        state: absent
     - name: Configure MariaDB for replication
       copy:
         dest: /etc/mysql/my.cnf
@@ -70,12 +95,32 @@
         state: present
       when: inventory_hostname == master_host
 
+    - name: Ensure backup directory exists (only on master)
+      file:
+        path: "{{ backup_directory }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: inventory_hostname == master_host
+
+    - name: Create MySQL backup with date in filename (only on master)
+      shell: |
+        backup_dir="{{ backup_directory }}" filename="master_backup_$(date +\%Y-\%m-\%d).sql"
+        /usr/bin/mysqldump -u root -p'{{ replication_password }}' --all-databases --master-data=2 --single-transaction --quick --lock-tables=false > "$backup_dir/$filename"
+      when: inventory_hostname == master_host
+
     - name: Find the latest MySQL backup file (only on master)
       shell: "ls -t {{ backup_directory }}*.sql | head -n 1"
       register: latest_backup_file
       when: inventory_hostname == master_host
 
-- name: Download the backup file from master (on slaves)
+    - name: Debug the latest backup file
+      debug:
+        var: latest_backup_file
+      when: inventory_hostname == master_host
+
+    - name: Download the backup file from master (on slaves)
       fetch:
         src: "{{ latest_backup_file.stdout }}"
         dest: "{{ backup_directory }}"
@@ -136,5 +181,3 @@
       debug:
         var: slave_status
       when: inventory_hostname == slave_host
-
-

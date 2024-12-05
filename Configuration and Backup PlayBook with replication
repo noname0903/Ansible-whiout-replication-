@@ -74,6 +74,14 @@
       shell: "ls -t {{ backup_directory }}*.sql | head -n 1"
       register: latest_backup_file
       when: inventory_hostname == master_host
+
+- name: Download the backup file from master (on slaves)
+      fetch:
+        src: "{{ latest_backup_file.stdout }}"
+        dest: "{{ backup_directory }}"
+        flat: yes
+      when: inventory_hostname == master_host
+
     - name: Import the backup file to slave
       shell: |
         mysql -u root -p'{{ replication_password }}' < "{{ backup_directory }}/{{ latest_backup_file.stdout | basename }}"
@@ -128,3 +136,5 @@
       debug:
         var: slave_status
       when: inventory_hostname == slave_host
+
+

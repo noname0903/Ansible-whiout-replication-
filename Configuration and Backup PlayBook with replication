@@ -41,7 +41,7 @@
       mysql_user:
         name: root
         password: "{{ root_password }}"
-        host: localhost
+        host: "%"
         state: present
 
     - name: Remove test database
@@ -52,13 +52,13 @@
     - name: Remove anonymous users
       mysql_user:
         name: ''
-        host: localhost
+        host: "%"
         state: absent
 
     - name: Disable remote root login
       mysql_user:
         name: root
-        host: '%'
+        host: "%"
         state: absent
     - name: Configure MariaDB for replication
       copy:

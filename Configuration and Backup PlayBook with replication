@@ -81,7 +81,7 @@
       mode: '0644'
 
     - name: Restart MariaDB service
-      systemd:
+      service:
         name: mariadb
         state: restarted
         enabled: yes

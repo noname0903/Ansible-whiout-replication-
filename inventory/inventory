@@ -1,3 +1,14 @@
+[master]
+rep1 ansible_host=10.98.6.102 server_id=1
+
+[slave]
+rep2 ansible_host=10.98.6.103 server_id=2
+
 [replication]
 rep1 ansible_host=10.98.6.102 server_id=1
 rep2 ansible_host=10.98.6.103 server_id=2
+
+[replication:children]
+master
+slaves
+

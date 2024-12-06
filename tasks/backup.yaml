@@ -1,0 +1,19 @@
+- name: Ensure backup directory exists (only on master)
+  file:
+    path: "{{ backup_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: inventory_hostname == master_host
+
+- name: Create MySQL backup with date in filename (only on master)
+  shell: |
+    backup_dir="{{ backup_directory }}" filename="master_backup_$(date +\%Y-\%m-\%d).sql"
+    /usr/bin/mysqldump -u root -p'{{ replication_password }}' --all-databases --master-data=2 --single-transaction --quick --lock-tables=false > "$backup_dir/$filename"
+  when: inventory_hostname == master_host
+
+- name: Find the latest MySQL backup file (only on master)
+  shell: "ls -t {{ backup_directory }}*.sql | head -n 1"
+  register: latest_backup_file
+  when: inventory_hostname == master_host

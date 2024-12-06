@@ -36,3 +36,8 @@
     name: mariadb
     state: restarted
     enabled: yes
+- name: Allow MariaDB port 3306 through the firewall
+  ufw:
+    rule: allow
+    port: 3306
+    proto: tcp

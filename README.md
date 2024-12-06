@@ -19,6 +19,7 @@ Add the replica database node to the Ansible inventory file and define for each 
   Change ansible_host="your IP"
 Here's request configure
 ![image](https://github.com/user-attachments/assets/2a613bcb-ba12-433f-b655-20cac2623455)
+
 This is the complete configuration when moved back into 1 playbook
 ![image](https://github.com/user-attachments/assets/ee42228d-82d9-4302-9c8d-af83af829cb0)
 ![image](https://github.com/user-attachments/assets/e02a830e-6f8c-44be-8b3d-2ad413a485b3)

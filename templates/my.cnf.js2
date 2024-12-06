@@ -1,0 +1,12 @@
+[mysqld]
+server-id = {{ hostvars[inventory_hostname]['server_id'] }}
+{% if inventory_hostname != master_host %}
+relay-log = /var/log/mysql/mysql-relay-bin.log
+read_only = 1
+{% else %}
+log_bin = /var/log/mysql/mysql-bin.log
+bind-address = 0.0.0.0
+{% endif %}
+log_error = /var/log/mysql/error.log
+max_connections = 100
+key_buffer_size = 16M

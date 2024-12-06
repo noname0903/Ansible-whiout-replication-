@@ -17,6 +17,7 @@ Add the replica database node to the Ansible inventory file and define for each 
 ![image](https://github.com/user-attachments/assets/6cc004d5-86c2-4765-997d-a56aa1277d88)
 * Notice:
   Change ansible_host="your IP"
+  Allow port 3306/tcp from every node
 Here's request configure
 ![image](https://github.com/user-attachments/assets/2a613bcb-ba12-433f-b655-20cac2623455)
 

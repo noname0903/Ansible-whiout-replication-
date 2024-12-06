@@ -1,0 +1,38 @@
+---
+- name: Set root password
+  mysql_user:
+    name: root
+    password: "{{ root_password }}"
+    host: "%"
+    state: present
+
+- name: Remove test database
+  mysql_db:
+    name: test
+    state: absent
+
+- name: Remove anonymous users
+  mysql_user:
+    name: ''
+    host: "%"
+    state: absent
+
+- name: Disable remote root login
+  mysql_user:
+    name: root
+    host: "%"
+    state: absent
+
+- name: Configure MariaDB for replication
+  template:
+    src: my.cnf.j2
+    dest: /etc/mysql/my.cnf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Restart MariaDB service
+  systemd:
+    name: mariadb
+    state: restarted
+    enabled: yes

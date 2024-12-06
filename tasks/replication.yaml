@@ -1,0 +1,91 @@
+---
+- name: Create replication user (only on master)
+  mysql_user:
+    name: "{{ replication_user }}"
+    password: "{{ replication_password }}"
+    host: "%"
+    priv: "*.*:REPLICATION SLAVE"
+    state: present
+  when: inventory_hostname == master_host
+
+- name: Ensure backup directory exists (only on master)
+  file:
+    path: "{{ backup_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: inventory_hostname == master_host
+
+- name: Create MySQL backup with date in filename (only on master)
+  shell: |
+    backup_dir="{{ backup_directory }}" filename="master_backup_$(date +\%Y-\%m-\%d).sql"
+    /usr/bin/mysqldump -u root -p'{{ replication_password }}' --all-databases --master-data=2 --single-transaction --quick --lock-tables=false > "$backup_dir/$filename"
+  when: inventory_hostname == master_host
+
+- name: Find the latest MySQL backup file (only on master)
+  shell: "ls -t {{ backup_directory }}*.sql | head -n 1"
+  register: latest_backup_file
+  when: inventory_hostname == master_host
+
+- name: Download the backup file from master (on slaves)
+  fetch:
+    src: "{{ latest_backup_file.stdout }}"
+    dest: "{{ backup_directory }}"
+    flat: yes
+  when: inventory_hostname == master_host
+
+- name: Import the backup file to slave
+  shell: |
+    mysql -u root -p'{{ replication_password }}' < "{{ backup_directory }}/{{ latest_backup_file.stdout | basename }}"
+  when: inventory_hostname == master_host
+
+- name: Read log_file and log_pos from backup (only on master)
+  shell: |
+    grep -m 1 "CHANGE MASTER TO" {{ latest_backup_file.stdout }} |
+    grep -oE "MASTER_LOG_FILE='[^']*'|MASTER_LOG_POS=[0-9]+" |
+    awk -F"=" '{print $2}' | tr -d "'"
+  register: log_values
+  when: inventory_hostname == master_host
+
+- name: Share log_file and log_pos to all hosts
+  set_fact:
+    log_file: "{{ log_values.stdout_lines[0] | default('') }}"
+    log_pos: "{{ log_values.stdout_lines[1] | default('') }}"
+
+- name: Stop slave process
+  mysql_replication:
+    mode: stopreplica
+    login_user: root
+    login_password: "{{ replication_password }}"
+  when: inventory_hostname == slave_host
+
+- name: Configure replication on slave
+  command: >
+    mariadb -u root -p'{{ replication_password }}' -e
+    "CHANGE MASTER TO MASTER_HOST='{{ hostvars[master_host]['ansible_host'] }}',
+    MASTER_USER='{{ replication_user }}',
+    MASTER_PASSWORD='{{ replication_password }}',
+    MASTER_LOG_FILE='{{ hostvars[master_host]['log_file'] }}',
+    MASTER_LOG_POS={{ hostvars[master_host]['log_pos'] }};"
+  when: inventory_hostname == slave_host
+
+- name: Start slave process
+  mysql_replication:
+    mode: startreplica
+    login_user: root
+    login_password: "{{ replication_password }}"
+  when: inventory_hostname == slave_host
+
+- name: Check slave replication status
+  mysql_replication:
+    mode: getreplica
+    login_user: root
+    login_password: "{{ replication_password }}"
+  register: slave_status
+  when: inventory_hostname == slave_host
+
+- name: Display slave replication status
+  debug:
+    var: slave_status
+  when: inventory_hostname == slave_host

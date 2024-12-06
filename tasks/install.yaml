@@ -1,0 +1,26 @@
+---
+- name: Install curl (if not already installed)
+  apt:
+    name: curl
+    state: present
+    update_cache: yes
+
+- name: Download and run the MariaDB repository setup script
+  shell: "curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version='mariadb-11.6'"
+  args:
+    creates: /etc/apt/sources.list.d/mariadb.list
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install MariaDB server
+  apt:
+    name: mariadb-server
+    state: latest
+
+- name: Start and enable MariaDB service
+  systemd:
+    name: mariadb
+    state: started
+    enabled: yes

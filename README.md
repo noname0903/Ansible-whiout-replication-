@@ -28,11 +28,14 @@ This is the complete configuration when moved back into 1 playbook
 ![image](https://github.com/user-attachments/assets/c46f09e8-da4b-4ff7-8ae9-29c603521487)
 
 *Result
+
 ![image](https://github.com/user-attachments/assets/ce3deea2-d2a3-4669-8213-c9f658256cce)
+
 
 +)Master
 ![image](https://github.com/user-attachments/assets/de09ddf6-4d9b-4814-93d3-90bf5c73bfb9)
 ![image](https://github.com/user-attachments/assets/9f3a8751-e3d9-447c-8c43-4aee0623731d)
+
 +)Slave
 ![image](https://github.com/user-attachments/assets/de09ddf6-4d9b-4814-93d3-90bf5c73bfb9)
 ![image](https://github.com/user-attachments/assets/7b630a75-e7f6-4519-8f80-b62751ecf950)

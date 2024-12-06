@@ -1,4 +1,6 @@
 ---
-- include: install.yml
-- include: configure.yml
-- include: replication.yml
+- include: install.yaml
+- include: configure.yaml
+- include: replication.yaml
+- include: backup.yaml
+- include: import.yaml

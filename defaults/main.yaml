@@ -1,0 +1,7 @@
+---
+master_host: rep1
+slave_host: rep2
+replication_user: replica
+replication_password: juniper@123
+backup_directory: /var/backups/mysql/
+root_password: juniper@123

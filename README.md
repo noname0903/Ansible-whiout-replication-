@@ -23,6 +23,8 @@ This is the complete configuration when moved back into 1 playbook
 ![image](https://github.com/user-attachments/assets/ee42228d-82d9-4302-9c8d-af83af829cb0)
 ![image](https://github.com/user-attachments/assets/e02a830e-6f8c-44be-8b3d-2ad413a485b3)
 ![image](https://github.com/user-attachments/assets/76118446-db91-4282-962b-63d14a2882a8)
+![image](https://github.com/user-attachments/assets/d6764da9-b87e-4421-8c5c-378b063b3a57)
+![image](https://github.com/user-attachments/assets/c46f09e8-da4b-4ff7-8ae9-29c603521487)
 
 *Result
 ![image](https://github.com/user-attachments/assets/ce3deea2-d2a3-4669-8213-c9f658256cce)

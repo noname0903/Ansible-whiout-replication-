@@ -9,6 +9,18 @@ Benefits of MariaDB Replication:
 -Data Backup: Data can be backed up from slave servers without impacting the master server's performance.
 -Increased Performance: Separates write operations (on the master) from read operations (on the slaves).
 
+This playbook will setup a MySQL replication by doing the following steps:
+
+Backup the current databases from the MySQL master
+Compress the backup
+Download the backup
+Upload and uncompress the backup to the MySQL slave
+Stop MySQL on the slave
+Import the backup
+Start MySQL on the slave
+Configute the MySQL slave process
+Start the MySQL slave process
+
 Configure MariaDB Streaming Replication Between Two or More Nodes
 
 This role was developed and tested for use with MariaDB to set up a redundant database backend. This configuration sets up a master/replica MariaDB setup with two nodes, enabling replication between them. It does not configure advanced clustering, but rather focuses on configuring a basic master-slave replication between two MariaDB nodes.

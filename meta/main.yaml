@@ -1,2 +1,6 @@
 ---
-dependencies: []
+dependencies: 
+  - role: setup_firewall
+    vars:
+      firewall_ports:
+        - 3306
